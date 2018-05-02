@@ -44,27 +44,26 @@ public class AvroDataOutputStreamGenerator extends BaseAvroDataGenerator {
   private OutputStream outputStream;
   private String compressionCodec;
   private DataFileWriter<GenericRecord> dataFileWriter;
+  private Map<String, Object> defaultValueMap;
+  private Schema schema;
 
   public AvroDataOutputStreamGenerator(
       boolean schemaInHeader,
       OutputStream outputStream,
       String compressionCodec,
-      Schema schema,
-      Map<String, Object> defaultValueMap,
-      String schemaSubject,
-      AvroSchemaHelper schemaHelper,
-      int schemaId
+      AvroSchemaMetadataProvider schemaMetaProvider,
+      AvroSchemaHelper schemaHelper
   ) throws IOException {
-    super(schemaInHeader, schema, defaultValueMap, schemaHelper, schemaSubject, schemaId);
+    super(schemaInHeader, schemaMetaProvider, schemaHelper);
     this.compressionCodec = compressionCodec;
     this.outputStream = outputStream;
-    if(!schemaInHeader) {
-      initialize();
-    }
   }
 
   @Override
-  protected void initializeWriter() throws IOException {
+  protected void initializeWriter(Record record) throws IOException, DataGeneratorException {
+    AvroSchemaMetadataProvider.SchemaMetadata meta = schemaMetaProvider.getMeta(record);
+    defaultValueMap = meta.defaultValues;
+    schema = meta.schema;
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
     dataFileWriter = new DataFileWriter<>(datumWriter);
     dataFileWriter.setCodec(CodecFactory.fromString(compressionCodec));

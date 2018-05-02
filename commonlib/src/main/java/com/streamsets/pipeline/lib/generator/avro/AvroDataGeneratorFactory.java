@@ -15,6 +15,7 @@
  */
 package com.streamsets.pipeline.lib.generator.avro;
 
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableSet;
 import com.streamsets.pipeline.api.impl.Utils;
 import com.streamsets.pipeline.config.DestinationAvroSchemaSource;
@@ -48,6 +49,8 @@ import static com.streamsets.pipeline.lib.util.AvroSchemaHelper.SCHEMA_REPO_URLS
 import static com.streamsets.pipeline.lib.util.AvroSchemaHelper.SCHEMA_SOURCE_KEY;
 import static com.streamsets.pipeline.lib.util.AvroSchemaHelper.SUBJECT_DEFAULT;
 import static com.streamsets.pipeline.lib.util.AvroSchemaHelper.SUBJECT_KEY;
+import static org.apache.commons.lang3.StringUtils.isEmpty;
+import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 
 public class AvroDataGeneratorFactory extends DataGeneratorFactory {
   public static final Map<String, Object> CONFIGS;
@@ -76,7 +79,11 @@ public class AvroDataGeneratorFactory extends DataGeneratorFactory {
   private final boolean includeSchema;
   private final String compressionCodec;
 
-  private Schema schema;
+  // use same cache for all generators instances
+  private final LoadingCache<String, AvroSchemaMetadataProvider.SchemaMetadata> subjectCache;
+
+  private AvroSchemaMetadataProvider schemaMetaProvider;
+
   private Map<String, Object> defaultValuesFromSchema;
   private int schemaId = 0;
 
@@ -91,12 +98,14 @@ public class AvroDataGeneratorFactory extends DataGeneratorFactory {
     schemaId = settings.getConfig(SCHEMA_ID_KEY);
     schemaSubject = settings.getConfig(SUBJECT_KEY);
 
+    subjectCache = AvroSchemaMetadataProvider.RecordAvroSchemaMetadataProvider.createCache(schemaHelper);
+
     switch (schemaSource) {
       case HEADER:
-        schema = null;
+        schemaMetaProvider = new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(schemaSubject, 0, null, defaultValuesFromSchema);
         break;
       case REGISTRY:
-        initFromRegistry(schemaSubject);
+        initFromRegistry(settings, schemaSubject);
         break;
       case INLINE:
         initFromInline(settings, schemaSubject);
@@ -108,19 +117,29 @@ public class AvroDataGeneratorFactory extends DataGeneratorFactory {
   }
 
   private void initFromInline(Settings settings, String subject) throws SchemaRegistryException {
-    schema = schemaHelper.loadFromString((String) settings.getConfig(SCHEMA_KEY));
+    Schema schema = schemaHelper.loadFromString((String) settings.getConfig(SCHEMA_KEY));
     if (schemaHelper.hasRegistryClient()) {
       schemaId = schemaHelper.registerSchema(schema, subject);
     }
     Utils.checkNotNull(schema, "Avro Schema");
+    schemaMetaProvider = new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(subject, schemaId, schema, defaultValuesFromSchema);
   }
 
-  private void initFromRegistry(String subject) throws SchemaRegistryException {
-    schema = schemaHelper.loadFromRegistry(subject, schemaId);
-    defaultValuesFromSchema = AvroSchemaHelper.getDefaultValues(schema);
-    // If subject configuration is specified, figure out schemaId
-    if (!subject.isEmpty()) {
-      schemaId = schemaHelper.getSchemaIdFromSubject(subject);
+  private boolean isConst(String expr) {
+    return isEmpty(expr) || !(expr.trim().endsWith("}") && expr.trim().startsWith("${"));
+  }
+
+  private void initFromRegistry(Settings settings, String subject) throws SchemaRegistryException {
+    if (isNotEmpty(subject) && isConst(subject)) {
+      Schema schema = schemaHelper.loadFromRegistry(subject, schemaId);
+      defaultValuesFromSchema = AvroSchemaHelper.getDefaultValues(schema);
+      // If subject configuration is specified, figure out schemaId
+      if (!subject.isEmpty()) {
+        schemaId = schemaHelper.getSchemaIdFromSubject(subject);
+      }
+      schemaMetaProvider = new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(subject, schemaId, schema, defaultValuesFromSchema);
+    } else {
+      schemaMetaProvider = new AvroSchemaMetadataProvider.RecordAvroSchemaMetadataProvider(subject, settings.getContext(),  subjectCache);
     }
   }
 
@@ -134,21 +153,15 @@ public class AvroDataGeneratorFactory extends DataGeneratorFactory {
           schemaInHeader,
           os,
           compressionCodec,
-          schema,
-          defaultValuesFromSchema,
-          schemaSubject,
-          schemaHelper,
-          schemaId
+          schemaMetaProvider,
+          schemaHelper
       );
     } else {
       dataGenerator = new AvroMessageGenerator(
         schemaInHeader,
         os,
-        schema,
-        defaultValuesFromSchema,
-        schemaSubject,
-        schemaHelper,
-        schemaId
+        schemaMetaProvider,
+        schemaHelper
       );
     }
     return dataGenerator;

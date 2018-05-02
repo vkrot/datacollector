@@ -15,6 +15,9 @@
  */
 package com.streamsets.pipeline.lib.generator.avro;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.streamsets.pipeline.api.Field;
@@ -26,6 +29,7 @@ import com.streamsets.pipeline.lib.generator.DataGenerator;
 import com.streamsets.pipeline.lib.generator.DataGeneratorException;
 import com.streamsets.pipeline.lib.generator.DataGeneratorFactoryBuilder;
 import com.streamsets.pipeline.lib.generator.DataGeneratorFormat;
+import com.streamsets.pipeline.lib.util.AvroSchemaHelper;
 import com.streamsets.pipeline.lib.util.AvroTypeUtil;
 import com.streamsets.pipeline.lib.util.CommonError;
 import com.streamsets.pipeline.lib.util.JsonUtil;
@@ -39,6 +43,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -205,11 +210,13 @@ public class TestAvroDataGenerator {
       false,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      SCHEMA,
-      AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<String>()),
-      null,
-      null,
-      0
+      new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+          null,
+          0,
+          SCHEMA,
+          AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<>())
+      ),
+      null
     );
     Record record = createRecord();
     gen.write(record);
@@ -234,11 +241,13 @@ public class TestAvroDataGenerator {
         false,
         baos,
         codecName,
-        SCHEMA,
-        AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<String>()),
-        null,
-        null,
-        0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            SCHEMA,
+            AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<String>())
+        ),
+        null
     );
     Record record = createRecord();
     gen.write(record);
@@ -279,11 +288,13 @@ public class TestAvroDataGenerator {
       false,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      SCHEMA,
-      AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<String>()),
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            SCHEMA,
+            AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<>())
+        ),
+        null
     );
     Record record = createRecord();
     gen.write(record);
@@ -295,16 +306,19 @@ public class TestAvroDataGenerator {
   public void testWriteAfterClose() throws Exception {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataGenerator gen = new AvroDataOutputStreamGenerator(
-        false,
-        baos,
-        COMPRESSION_CODEC_DEFAULT,
+      false,
+      baos,
+      COMPRESSION_CODEC_DEFAULT,
+      new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+        null,
+        0,
         SCHEMA,
-        new HashMap<String, Object>(),
-        null,
-        null,
-        0
+        AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<>())
+      ),
+      null
     );
     Record record = createRecord();
+    gen.write(record);
     gen.close();
     gen.write(record);
   }
@@ -316,11 +330,13 @@ public class TestAvroDataGenerator {
         false,
         baos,
         COMPRESSION_CODEC_DEFAULT,
-        SCHEMA,
-        new HashMap<String, Object>(),
-        null,
-        null,
-        0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            SCHEMA,
+            new HashMap<>()
+        ),
+        null
     );
     gen.close();
     gen.flush();
@@ -337,11 +353,13 @@ public class TestAvroDataGenerator {
         false,
         baos,
         COMPRESSION_CODEC_DEFAULT,
-        SCHEMA,
-        AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<String>()),
-        null,
-        null,
-        0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            SCHEMA,
+            AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<String>())
+        ),
+        null
 
     );
     dataGenerator.write(r);
@@ -367,11 +385,13 @@ public class TestAvroDataGenerator {
         false,
         baos,
         COMPRESSION_CODEC_DEFAULT,
-        SCHEMA,
-        new HashMap<String, Object>(),
-        null,
-        null,
-        0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            SCHEMA,
+            AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<String>())
+        ),
+        null
     );
     gen.write(record);
     gen.close();
@@ -560,14 +580,64 @@ public class TestAvroDataGenerator {
       true,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      null,
-      null,
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            null,
+            null
+        ),
+        null
     );
     Record record = createRecord();
     record.getHeader().setAttribute(BaseAvroDataGenerator.AVRO_SCHEMA_HEADER, AVRO_SCHEMA);
+    gen.write(record);
+    gen.close();
+
+    GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(null);
+    DataFileReader<GenericRecord> dataFileReader = new DataFileReader<>(
+      new SeekableByteArrayInput(baos.toByteArray()), reader);
+    Assert.assertTrue(dataFileReader.hasNext());
+    GenericRecord readRecord = dataFileReader.next();
+
+    Assert.assertEquals("hari", readRecord.get("name").toString());
+    Assert.assertEquals(3100, readRecord.get("age"));
+    Assert.assertFalse(dataFileReader.hasNext());
+  }
+
+  @Test
+  public void testSchemaSubjectInRecord() throws Exception {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+    String subject = "subj";
+    String subjectEL = "${record:value('/a')}";
+    int schemaId = 1;
+    AvroSchemaHelper schemaHelper = Mockito.mock(AvroSchemaHelper.class);
+    Mockito.when(schemaHelper.getSchemaIdFromSubject(subject)).thenReturn(schemaId);
+    Mockito.when(schemaHelper.loadFromRegistry(schemaId)).thenReturn(SCHEMA);
+
+    LoadingCache<String, AvroSchemaMetadataProvider.SchemaMetadata> cache = CacheBuilder.newBuilder()
+        .build(new CacheLoader<String, AvroSchemaMetadataProvider.SchemaMetadata>() {
+          @Override
+          public AvroSchemaMetadataProvider.SchemaMetadata load(String s) throws Exception {
+            return new AvroSchemaMetadataProvider.SchemaMetadata(
+                schemaId,
+                subject,
+                SCHEMA,
+                AvroTypeUtil.getDefaultValuesFromSchema(SCHEMA, new HashSet<>())
+            );
+          }
+        });
+
+    Stage.Context context = ContextInfoCreator.createTargetContext("i", false, OnRecordError.TO_ERROR);
+    DataGenerator gen = new AvroDataOutputStreamGenerator(
+      false,
+      baos,
+      COMPRESSION_CODEC_DEFAULT,
+        new AvroSchemaMetadataProvider.RecordAvroSchemaMetadataProvider(subjectEL, context, cache),
+        schemaHelper
+    );
+    Record record = createRecord();
+    record.set("/a", Field.create(subject));
     gen.write(record);
     gen.close();
 
@@ -589,11 +659,13 @@ public class TestAvroDataGenerator {
       true,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      null,
-      null,
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            null,
+            null
+        ),
+        null
     );
 
     Map<String, Field> rootField = new HashMap<>();
@@ -622,11 +694,13 @@ public class TestAvroDataGenerator {
       true,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      null,
-      null,
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            null,
+            null
+        ),
+        null
     );
     Record record = createRecord();
     gen.write(record);
@@ -640,11 +714,13 @@ public class TestAvroDataGenerator {
       true,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      null,
-      null,
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            null,
+            null
+        ),
+        null
     );
     Record record = createRecord();
 
@@ -676,11 +752,13 @@ public class TestAvroDataGenerator {
       false,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      DECIMAL_SCHEMA,
-      new HashMap<String, Object>(),
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            DECIMAL_SCHEMA,
+            new HashMap<>()
+        ),
+        null
     );
     gen.write(record);
     gen.close();
@@ -708,11 +786,13 @@ public class TestAvroDataGenerator {
       false,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      DATE_SCHEMA,
-      new HashMap<String, Object>(),
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            DATE_SCHEMA,
+            new HashMap<>()
+        ),
+        null
     );
     gen.write(record);
     gen.close();
@@ -748,11 +828,13 @@ public class TestAvroDataGenerator {
       false,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      SCHEMA,
-      new HashMap<String, Object>(),
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            SCHEMA,
+            new HashMap<>()
+        ),
+        null
     );
     gen.write(record);
     gen.close();
@@ -790,11 +872,13 @@ public class TestAvroDataGenerator {
       false,
       baos,
       COMPRESSION_CODEC_DEFAULT,
-      SCHEMA,
-      new HashMap<String, Object>(),
-      null,
-      null,
-      0
+        new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            null,
+            0,
+            SCHEMA,
+            new HashMap<>()
+        ),
+        null
     );
 
     try {

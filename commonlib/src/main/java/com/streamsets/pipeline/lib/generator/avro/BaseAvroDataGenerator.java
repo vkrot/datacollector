@@ -46,12 +46,12 @@ abstract public class BaseAvroDataGenerator implements DataGenerator {
   /**
    * Initialize output writer
    */
-  abstract protected void initializeWriter() throws IOException;
+  abstract protected void initializeWriter(Record record) throws IOException, DataGeneratorException;
 
   /**
    * Hook that will be called once initialize() is successfully done
    */
-  protected void postInitialize() throws IOException {
+  protected void postInitialize(Record record) throws IOException, DataGeneratorException {
   }
 
   /**
@@ -81,29 +81,16 @@ abstract public class BaseAvroDataGenerator implements DataGenerator {
   private int schemaHashCode;
 
   /**
-   * Avro schema, can be null on creation, will be filled with value before calling initializeWriter()
+   * accessor for subject, schemaId, schema and default values on per-record basis
    */
-  protected Schema schema;
-
-  /**
-   * Confluent Avro Schema Repository id (if used).
-   */
-  protected int schemaId;
-
-  /**
-   * Map for default values from the avro schema.
-   */
-  protected Map<String, Object> defaultValueMap;
-
-  /**
-   * Subject of the schema.
-   */
-  protected final String schemaSubject;
+  protected AvroSchemaMetadataProvider schemaMetaProvider;
 
   /**
    * Avro Schema helper object to work with schema repository.
    */
   protected final AvroSchemaHelper schemaHelper;
+
+  protected boolean initialized = false;
 
   /**
    * State of the generator
@@ -117,56 +104,72 @@ abstract public class BaseAvroDataGenerator implements DataGenerator {
 
   public BaseAvroDataGenerator(
       boolean schemaInHeader,
-      Schema schema,
-      Map<String, Object> defaultValueMap,
-      AvroSchemaHelper schemaHelper,
-      String schemaSubject,
-      int schemaId
+      AvroSchemaMetadataProvider schemaMetaProvider,
+      AvroSchemaHelper schemaHelper
   ) throws IOException {
     this.state = State.CREATED;
     this.schemaInHeader = schemaInHeader;
-    this.schema = schema;
-    this.defaultValueMap = defaultValueMap;
-    this.schemaSubject = schemaSubject;
+    this.schemaMetaProvider = schemaMetaProvider;
     this.schemaHelper = schemaHelper;
-    this.schemaId = schemaId;
   }
 
-  protected void initialize() throws IOException {
-    initializeWriter();
-
+  protected void initialize(Record record) throws IOException, DataGeneratorException {
     // Schema registration is delayed with using it in header until this point
     if(schemaInHeader && schemaHelper != null && schemaHelper.hasRegistryClient()) {
       try {
-        schemaId = schemaHelper.registerSchema(schema, schemaSubject);
+        AvroSchemaMetadataProvider.SchemaMetadata meta = schemaMetaProvider.getMeta(record);
+        int schemaId = schemaHelper.registerSchema(meta.schema, meta.subject);
+        // change meta, include fresh schemaId
+        schemaMetaProvider = new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+            meta.subject,
+            schemaId,
+            meta.schema,
+            meta.defaultValues
+        );
       } catch (SchemaRegistryException e) {
         throw new IOException("Can't initialize writer: " + e.toString(), e);
       }
     }
 
+    initializeWriter(record);
+
     // Switch state to opened
     state = State.OPENED;
 
     // And run post initialize hook
-    postInitialize();
+    postInitialize(record);
   }
 
   private void initializeSchemaFromRecord(Record record) throws IOException, DataGeneratorException {
     String jsonSchema = AvroTypeUtil.getAvroSchemaFromHeader(record, AVRO_SCHEMA_HEADER);
     schemaHashCode = jsonSchema.hashCode();
-    schema = AvroTypeUtil.parseSchema(jsonSchema);
-    defaultValueMap = AvroTypeUtil.getDefaultValuesFromSchema(schema, new HashSet<String>());
-    initialize();
+    Schema schema = AvroTypeUtil.parseSchema(jsonSchema);
+    Map<String, Object> defaultValueMap = AvroTypeUtil.getDefaultValuesFromSchema(schema, new HashSet<>());
+    AvroSchemaMetadataProvider.SchemaMetadata meta = schemaMetaProvider.getMeta(record);
+    // change meta, include newly generated schema
+    schemaMetaProvider = new AvroSchemaMetadataProvider.StaticAvroSchemaMetadataProvider(
+        meta.subject,
+        meta.schemaId,
+        schema,
+        defaultValueMap
+    );
+    initialize(record);
   }
 
   @Override
   public void write(Record record) throws IOException, DataGeneratorException {
+    if(!schemaInHeader && !initialized) {
+      initialized = true;
+      initialize(record);
+    }
+
     if (schemaInHeader) {
       if (state == State.CREATED) {
         initializeSchemaFromRecord(record);
       } else {
         String newAvroSchema = AvroTypeUtil.getAvroSchemaFromHeader(record, AVRO_SCHEMA_HEADER);
         if (schemaHashCode != newAvroSchema.hashCode()) {
+          Schema schema = schemaMetaProvider.getMeta(record).schema;
           LOG.error(
               "Record {} has a different schema. Expected: {}  Actual(Initialized): {}",
               record.getHeader().getSourceId(),

@@ -20,7 +20,6 @@ import com.streamsets.pipeline.api.StageException;
 import com.streamsets.pipeline.lib.generator.DataGeneratorException;
 import com.streamsets.pipeline.lib.util.AvroSchemaHelper;
 import com.streamsets.pipeline.lib.util.AvroTypeUtil;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
@@ -30,7 +29,6 @@ import java.io.Closeable;
 import java.io.Flushable;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Map;
 
 public class AvroMessageGenerator extends BaseAvroDataGenerator {
 
@@ -41,39 +39,38 @@ public class AvroMessageGenerator extends BaseAvroDataGenerator {
   public AvroMessageGenerator(
       boolean schemaInHeader,
       OutputStream outputStream,
-      Schema schema,
-      Map<String, Object> defaultValueMap,
-      String schemaSubject,
-      AvroSchemaHelper schemaHelper,
-      int schemaId
+      AvroSchemaMetadataProvider schemaMetaProvider,
+      AvroSchemaHelper schemaHelper
   ) throws IOException {
-    super(schemaInHeader, schema, defaultValueMap, schemaHelper, schemaSubject, schemaId);
+    super(schemaInHeader, schemaMetaProvider, schemaHelper);
     this.outputStream = outputStream;
     this.binaryEncoder = EncoderFactory.get().binaryEncoder(outputStream, null);
-
-    if(!schemaInHeader) {
-      initialize();
-    }
   }
 
   @Override
-  protected void initializeWriter() {
-    datumWriter = new GenericDatumWriter<>(schema);
+  protected void initializeWriter(Record record) throws DataGeneratorException {
+    datumWriter = new GenericDatumWriter<>(schemaMetaProvider.getMeta(record).schema);
   }
 
   @Override
-  protected void postInitialize() throws IOException {
+  protected void postInitialize(Record record) throws IOException, DataGeneratorException {
+    AvroSchemaMetadataProvider.SchemaMetadata meta = schemaMetaProvider.getMeta(record);
     // If using Confluent Kafka Serializer we must write the magic byte
-    if (schemaHelper != null && schemaHelper.hasRegistryClient() && schemaId > 0) {
-      schemaHelper.writeSchemaId(outputStream, schemaId);
+    if (schemaHelper != null && schemaHelper.hasRegistryClient() && meta.schemaId > 0) {
+      schemaHelper.writeSchemaId(outputStream, meta.schemaId);
     }
   }
 
   @Override
   public void writeRecord(Record record) throws IOException, DataGeneratorException {
     try {
+      AvroSchemaMetadataProvider.SchemaMetadata meta = schemaMetaProvider.getMeta(record);
       datumWriter.write(
-          AvroTypeUtil.sdcRecordToAvro(record, schema, defaultValueMap),
+          AvroTypeUtil.sdcRecordToAvro(
+              record,
+              meta.schema,
+              meta.defaultValues
+          ),
           binaryEncoder
       );
     } catch (StageException e) {

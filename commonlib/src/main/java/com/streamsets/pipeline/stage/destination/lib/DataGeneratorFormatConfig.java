@@ -364,6 +364,8 @@ public class DataGeneratorFormatConfig implements DataFormatConfig {
   @ConfigDef(
       required = true,
       type = ConfigDef.Type.STRING,
+      defaultValue = "${record:attribute('subject')}",
+      description = "Schema subject or an expression to obtain the subject from the record",
       label = "Schema Subject",
       dependencies = {
           @Dependency(configName = "dataFormat^", triggeredByValues = "AVRO"),
@@ -371,7 +373,9 @@ public class DataGeneratorFormatConfig implements DataFormatConfig {
           @Dependency(configName = "schemaLookupMode", triggeredByValues = "SUBJECT")
       },
       displayPosition = 450,
-      group = "DATA_FORMAT"
+      group = "DATA_FORMAT",
+      evaluation = ConfigDef.Evaluation.EXPLICIT,
+      elDefs = RecordEL.class
   )
   public String subject;
 
