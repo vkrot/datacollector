@@ -69,10 +69,7 @@ import com.streamsets.datacollector.runner.Pipeline;
 import com.streamsets.datacollector.runner.PipelineRunner;
 import com.streamsets.datacollector.runner.PipelineRuntimeException;
 import com.streamsets.datacollector.runner.UserContext;
-import com.streamsets.datacollector.runner.production.OffsetFileUtil;
-import com.streamsets.datacollector.runner.production.ProductionSourceOffsetTracker;
-import com.streamsets.datacollector.runner.production.RulesConfigLoaderRunnable;
-import com.streamsets.datacollector.runner.production.SourceOffset;
+import com.streamsets.datacollector.runner.production.*;
 import com.streamsets.datacollector.store.PipelineInfo;
 import com.streamsets.datacollector.store.PipelineStoreException;
 import com.streamsets.datacollector.updatechecker.UpdateChecker;
@@ -140,6 +137,8 @@ public class StandaloneRunner extends AbstractRunner implements StateListener {
   @Inject SnapshotStore snapshotStore;
   @Inject @Named("runnerExecutor") SafeScheduledExecutorService runnerExecutor;
   @Inject ResourceManager resourceManager;
+  @Inject
+  OffsetStorageFactory offsetStorageFactory;
 
   private final ObjectGraph objectGraph;
   private String pipelineTitle = null;
@@ -420,7 +419,13 @@ public class StandaloneRunner extends AbstractRunner implements StateListener {
     if (RESET_OFFSET_DISALLOWED_STATUSES.contains(status)) {
       throw new PipelineRunnerException(ContainerError.CONTAINER_0104, getName());
     }
-    ProductionSourceOffsetTracker offsetTracker = new ProductionSourceOffsetTracker(getName(), getRev(), getRuntimeInfo());
+
+    ProductionSourceOffsetTracker offsetTracker = new ProductionSourceOffsetTracker(
+        getName(),
+        getRev(),
+        getRuntimeInfo(),
+        offsetStorageFactory.create(getConfiguration())
+    );
     offsetTracker.resetOffset(getName(), getRev());
   }
 

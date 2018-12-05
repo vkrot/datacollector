@@ -25,6 +25,7 @@ import com.streamsets.datacollector.runner.Pipeline;
 import com.streamsets.datacollector.runner.PipelineRuntimeException;
 import com.streamsets.datacollector.runner.SourceOffsetTracker;
 import com.streamsets.datacollector.runner.UserContext;
+import com.streamsets.datacollector.runner.production.OffsetStorageFactory;
 import com.streamsets.datacollector.runner.production.ProductionSourceOffsetCommitterOffsetTracker;
 import com.streamsets.datacollector.runner.production.ProductionSourceOffsetTracker;
 import com.streamsets.datacollector.stagelibrary.StageLibraryTask;
@@ -57,6 +58,7 @@ public class ProductionPipelineBuilder {
 
   private final ProductionPipelineRunner runner;
   private final Observer observer;
+  private final OffsetStorageFactory offsetStorageFactory;
 
   public ProductionPipelineBuilder(
       @Named("name") String name,
@@ -68,7 +70,8 @@ public class ProductionPipelineBuilder {
       Observer observer,
       BlobStoreTask blobStoreTask,
       LineagePublisherTask lineagePublisherTask,
-      StatsCollector statsCollector
+      StatsCollector statsCollector,
+      OffsetStorageFactory offsetStorageFactory
   ) {
     this.name = name;
     this.rev = rev;
@@ -80,6 +83,7 @@ public class ProductionPipelineBuilder {
     this.blobStoreTask = blobStoreTask;
     this.lineagePublisherTask = lineagePublisherTask;
     this.statsCollector = statsCollector;
+    this.offsetStorageFactory = offsetStorageFactory;
   }
 
   public ProductionPipeline build(
@@ -122,7 +126,12 @@ public class ProductionPipelineBuilder {
       sourceOffsetTracker = new ProductionSourceOffsetCommitterOffsetTracker(name, rev, runtimeInfo,
         (OffsetCommitter) pipeline.getSource());
     } else {
-      sourceOffsetTracker = new ProductionSourceOffsetTracker(name, rev, runtimeInfo);
+      sourceOffsetTracker = new ProductionSourceOffsetTracker(
+          name,
+          rev,
+          runtimeInfo,
+          offsetStorageFactory.create(configuration)
+      );
     }
     runner.setOffsetTracker(sourceOffsetTracker);
     runner.setPipelineStartTime(startTime);

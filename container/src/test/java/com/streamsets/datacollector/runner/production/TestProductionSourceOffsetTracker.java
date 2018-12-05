@@ -71,7 +71,12 @@ public class TestProductionSourceOffsetTracker {
     );
     Files.createDirectories(PipelineDirectoryUtil.getPipelineDir(info, PIPELINE_NAME, PIPELINE_REV).toPath());
     OffsetFileUtil.resetOffsets(info, PIPELINE_NAME, PIPELINE_REV);
-    offsetTracker = new ProductionSourceOffsetTracker(PIPELINE_NAME, PIPELINE_REV, info);
+    offsetTracker = new ProductionSourceOffsetTracker(
+        PIPELINE_NAME,
+        PIPELINE_REV,
+        info,
+        new OffsetStorage.FileStorage()
+    );
   }
 
   @Test

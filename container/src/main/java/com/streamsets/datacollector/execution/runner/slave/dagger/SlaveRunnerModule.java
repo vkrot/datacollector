@@ -18,9 +18,11 @@ package com.streamsets.datacollector.execution.runner.slave.dagger;
 import com.streamsets.datacollector.execution.EventListenerManager;
 import com.streamsets.datacollector.execution.Runner;
 import com.streamsets.datacollector.execution.runner.common.AsyncRunner;
+import com.streamsets.datacollector.execution.runner.common.dagger.PipelineProviderModule;
 import com.streamsets.datacollector.execution.runner.slave.SlaveStandaloneRunner;
 import com.streamsets.datacollector.execution.runner.standalone.StandaloneRunner;
 import com.streamsets.datacollector.main.RuntimeInfo;
+import com.streamsets.datacollector.runner.production.OffsetStorageFactory;
 import com.streamsets.datacollector.util.Configuration;
 import com.streamsets.pipeline.lib.executor.SafeScheduledExecutorService;
 
@@ -29,6 +31,7 @@ import dagger.ObjectGraph;
 import dagger.Provides;
 
 import javax.inject.Named;
+import javax.inject.Singleton;
 
 @Module(injects = Runner.class, library = true, complete = false)
 public class SlaveRunnerModule {
@@ -58,5 +61,10 @@ public class SlaveRunnerModule {
       @Named("runnerStopExecutor") SafeScheduledExecutorService asyncStopExecutor
   ) {
     return new AsyncRunner(runner, asyncExecutor, asyncStopExecutor);
+  }
+
+  @Provides @Singleton
+  public OffsetStorageFactory provideOffsetStorageFactory() {
+    return OffsetStorageFactory.OffsetStorageFactoryImpl.INSTANCE;
   }
 }

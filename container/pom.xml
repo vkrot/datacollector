@@ -439,6 +439,25 @@
       <version>0.7.2</version>
     </dependency>
 
+    <!--TODO reviewer, what versions of zookeeper,curator are compatible with sdc? there may be conflicts with other libs I'm not aware of -->
+    <dependency>
+      <groupId>org.apache.zookeeper</groupId>
+      <artifactId>zookeeper</artifactId>
+      <version>3.4.6</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.curator</groupId>
+      <artifactId>curator-framework</artifactId>
+      <version>4.0.1</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.apache.zookeeper</groupId>
+          <artifactId>zookeeper</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
     <!-- Support bundles -->
     <dependency>
       <groupId>com.amazonaws</groupId>

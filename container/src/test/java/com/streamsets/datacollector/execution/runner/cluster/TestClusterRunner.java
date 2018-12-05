@@ -41,6 +41,7 @@ import com.streamsets.datacollector.main.StandaloneRuntimeInfo;
 import com.streamsets.datacollector.main.UserGroupManager;
 import com.streamsets.datacollector.runner.MockStages;
 import com.streamsets.datacollector.runner.PipelineRuntimeException;
+import com.streamsets.datacollector.runner.production.OffsetStorageFactory;
 import com.streamsets.datacollector.stagelibrary.StageLibraryTask;
 import com.streamsets.datacollector.store.AclStoreTask;
 import com.streamsets.datacollector.store.PipelineStoreException;
@@ -217,7 +218,8 @@ public class TestClusterRunner {
           eventListenerManager,
           sdcToken,
           new FileAclStoreTask(runtimeInfo, pipelineStore, new LockCache<String>(),
-              Mockito.mock(UserGroupManager.class))
+              Mockito.mock(UserGroupManager.class)),
+          OffsetStorageFactory.FILE
       );
     }
 
@@ -700,7 +702,7 @@ public class TestClusterRunner {
     eventListenerManager = new EventListenerManager();
     return new ClusterRunner(NAME, "0", runtimeInfo, conf, pipelineStoreTask, pipelineStateStore,
       stageLibraryTask, executorService, clusterHelper, new ResourceManager(conf), eventListenerManager, "myToken",
-      aclStoreTask);
+      aclStoreTask, OffsetStorageFactory.FILE);
   }
 
   private Runner createRunnerForRetryTest(PipelineStateStore pipelineStateStore) {
@@ -714,7 +716,7 @@ public class TestClusterRunner {
   private Runner createClusterRunner(String name, PipelineStoreTask pipelineStoreTask, ResourceManager resourceManager) {
     eventListenerManager = new EventListenerManager();
     Runner runner = new ClusterRunner(name, "0", runtimeInfo, conf, pipelineStoreTask, pipelineStateStore,
-      stageLibraryTask, executorService, clusterHelper, resourceManager, eventListenerManager, "myToken", aclStoreTask);
+      stageLibraryTask, executorService, clusterHelper, resourceManager, eventListenerManager, "myToken", aclStoreTask, OffsetStorageFactory.FILE);
     eventListenerManager.addStateEventListener(resourceManager);
     return runner;
   }
@@ -735,7 +737,8 @@ public class TestClusterRunner {
         new ResourceManager(conf),
         eventListenerManager,
         "myToken",
-        aclStoreTask
+        aclStoreTask,
+        OffsetStorageFactory.FILE
       ),
       new SafeScheduledExecutorService(1, "runner"),
       new SafeScheduledExecutorService(1, "runnerStop")
@@ -753,7 +756,7 @@ public class TestClusterRunner {
       super(name, rev, runtimeInfo, configuration, pipelineStore, pipelineStateStore, stageLibrary, executorService,
         clusterHelper, resourceManager, eventListenerManager, "myToken",
         new FileAclStoreTask(runtimeInfo, pipelineStore, new LockCache<String>(),
-            Mockito.mock(UserGroupManager.class)));
+            Mockito.mock(UserGroupManager.class)), OffsetStorageFactory.FILE);
     }
 
     @Override

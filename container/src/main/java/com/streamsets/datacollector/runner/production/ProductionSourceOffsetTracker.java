@@ -17,7 +17,6 @@ package com.streamsets.datacollector.runner.production;
 
 import com.streamsets.datacollector.main.RuntimeInfo;
 import com.streamsets.datacollector.runner.SourceOffsetTracker;
-
 import com.streamsets.pipeline.api.Source;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,22 +30,28 @@ import java.util.Map;
 public class ProductionSourceOffsetTracker implements SourceOffsetTracker {
 
   private static final Logger LOG = LoggerFactory.getLogger(ProductionSourceOffsetTracker.class);
+
+  public static final String STORAGE_TYPE = "offsets.storage.type";
+
   private Map<String, String> offsets;
   private volatile long lastBatchTime;
   private boolean finished;
   private final String pipelineName;
   private final String rev;
   private final RuntimeInfo runtimeInfo;
+  private final OffsetStorage storage;
 
   @Inject
   public ProductionSourceOffsetTracker(
       @Named("name") String pipelineName,
       @Named("rev") String rev,
-      RuntimeInfo runtimeInfo
+      RuntimeInfo runtimeInfo,
+      OffsetStorage storage
   ) {
     this.pipelineName = pipelineName;
     this.rev = rev;
     this.runtimeInfo = runtimeInfo;
+    this.storage = storage;
     this.offsets = new HashMap<>(getSourceOffset(pipelineName, rev));
   }
 
@@ -90,15 +95,15 @@ public class ProductionSourceOffsetTracker implements SourceOffsetTracker {
   }
 
   public Map<String, String> getSourceOffset(String pipelineName, String rev) {
-    return OffsetFileUtil.saveIfEmpty(runtimeInfo, pipelineName, rev);
+    return storage.getAndSaveIfEmpty(runtimeInfo, pipelineName, rev);
   }
 
   public void resetOffset(String pipelineName, String rev) {
-    OffsetFileUtil.resetOffsets(runtimeInfo, pipelineName, rev);
+    storage.resetOffsets(runtimeInfo, pipelineName, rev);
   }
 
   private void saveOffset(String pipelineName, String rev, Map<String, String> offset) {
-    OffsetFileUtil.saveOffsets(runtimeInfo, pipelineName, rev, offset);
+    storage.saveOffsets(runtimeInfo, pipelineName, rev, offset);
   }
 
   @Override

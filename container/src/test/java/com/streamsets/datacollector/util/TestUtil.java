@@ -61,6 +61,8 @@ import com.streamsets.datacollector.runner.MockStages;
 import com.streamsets.datacollector.runner.Observer;
 import com.streamsets.datacollector.runner.PipelineRunner;
 import com.streamsets.datacollector.runner.SourceOffsetTracker;
+import com.streamsets.datacollector.runner.production.OffsetStorage;
+import com.streamsets.datacollector.runner.production.OffsetStorageFactory;
 import com.streamsets.datacollector.runner.production.ProductionSourceOffsetTracker;
 import com.streamsets.datacollector.runner.production.RulesConfigLoaderRunnable;
 import com.streamsets.datacollector.stagelibrary.StageLibraryTask;
@@ -585,6 +587,7 @@ public class TestUtil {
       RulesConfigLoaderRunnable.class,
       MetricObserverRunnable.class,
       SourceOffsetTracker.class,
+      OffsetStorageFactory.class,
       PipelineRunner.class,
       com.streamsets.datacollector.execution.runner.common.ProductionPipelineBuilder.class
     },
@@ -664,6 +667,11 @@ public class TestUtil {
     }
 
     @Provides @Singleton
+    public OffsetStorageFactory provideOffsetStorageFactory() {
+      return OffsetStorageFactory.OffsetStorageFactoryImpl.INSTANCE;
+    }
+
+    @Provides @Singleton
     public MetricObserverRunnable provideMetricObserverRunnable() {
       return Mockito.mock(MetricObserverRunnable.class);
     }
@@ -677,7 +685,12 @@ public class TestUtil {
     public SourceOffsetTracker provideProductionSourceOffsetTracker(@Named("name") String name,
                                                                               @Named("rev") String rev,
                                                                               RuntimeInfo runtimeInfo) {
-      return new ProductionSourceOffsetTracker(name, rev, runtimeInfo);
+      return new ProductionSourceOffsetTracker(
+          name,
+          rev,
+          runtimeInfo,
+          new OffsetStorage.FileStorage()
+      );
     }
 
     @Provides @Singleton
@@ -705,7 +718,8 @@ public class TestUtil {
         observer,
         Mockito.mock(BlobStoreTask.class),
         Mockito.mock(LineagePublisherTask.class),
-        Mockito.mock(StatsCollector.class)
+        Mockito.mock(StatsCollector.class),
+        OffsetStorageFactory.FILE
       );
     }
   }
@@ -753,7 +767,8 @@ public class TestUtil {
   @Module(
     injects = {
       StandaloneAndClusterPipelineManager.class,
-      StandaloneRunner.class
+      StandaloneRunner.class,
+      OffsetStorageFactory.class
     },
     library = true,
     includes = {
@@ -768,6 +783,11 @@ public class TestUtil {
   public static class TestPipelineManagerModule {
 
     public TestPipelineManagerModule() {
+    }
+
+    @Provides @Singleton
+    public OffsetStorageFactory provideOffsetStorageFactory() {
+      return OffsetStorageFactory.FILE;
     }
 
     @Provides @Singleton

@@ -63,6 +63,7 @@ import com.streamsets.datacollector.runner.Pipeline;
 import com.streamsets.datacollector.runner.PipelineRuntimeException;
 import com.streamsets.datacollector.runner.UserContext;
 import com.streamsets.datacollector.runner.production.OffsetFileUtil;
+import com.streamsets.datacollector.runner.production.OffsetStorageFactory;
 import com.streamsets.datacollector.runner.production.SourceOffset;
 import com.streamsets.datacollector.security.SecurityConfiguration;
 import com.streamsets.datacollector.stagelibrary.StageLibraryTask;
@@ -133,6 +134,8 @@ public class ClusterRunner extends AbstractRunner {
   @Inject LineagePublisherTask lineagePublisherTask;
   @Inject SupportBundleManager supportBundleManager;
   @Inject StatsCollector statsCollector;
+  @Inject
+  OffsetStorageFactory offsetStorageFactory;
 
   private String pipelineTitle = null;
   private ObjectGraph objectGraph;
@@ -187,7 +190,8 @@ public class ClusterRunner extends AbstractRunner {
       ResourceManager resourceManager,
       EventListenerManager eventListenerManager,
       String sdcToken,
-      AclStoreTask aclStoreTask
+      AclStoreTask aclStoreTask,
+      OffsetStorageFactory offsetStorageFactory
   ) {
     super(
       name,
@@ -210,6 +214,7 @@ public class ClusterRunner extends AbstractRunner {
     this.resourceManager = resourceManager;
     this.slaveCallbackManager = new SlaveCallbackManager();
     this.slaveCallbackManager.setClusterToken(sdcToken);
+    this.offsetStorageFactory = offsetStorageFactory;
   }
 
   @SuppressWarnings("deprecation")
@@ -786,7 +791,8 @@ public class ClusterRunner extends AbstractRunner {
       null,
       blobStoreTask,
       lineagePublisherTask,
-      statsCollector
+      statsCollector,
+      offsetStorageFactory
     );
     return builder.build(new UserContext(context.getUser(),
         getRuntimeInfo().isDPMEnabled(),

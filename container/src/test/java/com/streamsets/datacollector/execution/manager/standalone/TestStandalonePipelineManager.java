@@ -42,6 +42,7 @@ import com.streamsets.datacollector.main.RuntimeModule;
 import com.streamsets.datacollector.main.StandaloneRuntimeInfo;
 import com.streamsets.datacollector.main.UserGroupManager;
 import com.streamsets.datacollector.runner.MockStages;
+import com.streamsets.datacollector.runner.production.OffsetStorageFactory;
 import com.streamsets.datacollector.stagelibrary.StageLibraryTask;
 import com.streamsets.datacollector.store.AclStoreTask;
 import com.streamsets.datacollector.store.PipelineStoreException;
@@ -102,6 +103,7 @@ public class TestStandalonePipelineManager {
       StandaloneAndClusterPipelineManager.class,
       PipelineStoreTask.class,
       PipelineStateStore.class,
+      OffsetStorageFactory.class,
       StandaloneRunner.class,
       EventListenerManager.class,
       LockCache.class,
@@ -262,6 +264,11 @@ public class TestStandalonePipelineManager {
     @Provides @Singleton
     public StatsCollector provideStatsCollector() {
       return Mockito.mock(StatsCollector.class);
+    }
+
+    @Provides @Singleton
+    public OffsetStorageFactory provideOffsetStorageFactory() {
+      return OffsetStorageFactory.FILE;
     }
 
   }

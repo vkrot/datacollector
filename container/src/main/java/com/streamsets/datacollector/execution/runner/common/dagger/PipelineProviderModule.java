@@ -41,6 +41,7 @@ import com.streamsets.datacollector.metrics.MetricsModule;
 import com.streamsets.datacollector.runner.Observer;
 import com.streamsets.datacollector.runner.PipelineRunner;
 import com.streamsets.datacollector.runner.SourceOffsetTracker;
+import com.streamsets.datacollector.runner.production.OffsetStorageFactory;
 import com.streamsets.datacollector.runner.production.ProductionSourceOffsetTracker;
 import com.streamsets.datacollector.runner.production.RulesConfigLoaderRunnable;
 import com.streamsets.datacollector.stagelibrary.StageLibraryTask;
@@ -132,6 +133,11 @@ public class PipelineProviderModule {
   }
 
   @Provides @Singleton
+  public OffsetStorageFactory provideOffsetStorageFactory() {
+    return OffsetStorageFactory.OffsetStorageFactoryImpl.INSTANCE;
+  }
+
+  @Provides @Singleton
   public RulesConfigLoader provideRulesConfigLoader(
       @Named("name") String name,
       @Named("rev") String rev,
@@ -204,7 +210,8 @@ public class PipelineProviderModule {
     Observer observer,
     BlobStoreTask blobStoreTask,
     LineagePublisherTask lineagePublisherTask,
-    StatsCollector statsCollector
+    StatsCollector statsCollector,
+    OffsetStorageFactory offsetStorageFactory
   ) {
     return new ProductionPipelineBuilder(
       name,
@@ -216,7 +223,8 @@ public class PipelineProviderModule {
       observer,
       blobStoreTask,
       lineagePublisherTask,
-      statsCollector
+      statsCollector,
+      offsetStorageFactory
     );
   }
 
